@@ -1,7 +1,8 @@
 package com.example.smartwrench
 
 data class DTCRequest(
-    val dtc_code: String
+    val dtc_code: String,
+    val mileage_km: Int? = null
 )
 
 data class DTCResponse(
