@@ -33,12 +33,17 @@ class MainActivity : AppCompatActivity() {
 
         // Знаходимо елементи інтерфейсу
         val etDtcCode = findViewById<EditText>(R.id.etDtcCode)
+        val etMileage = findViewById<EditText>(R.id.etMileage)
         val btnAnalyze = findViewById<Button>(R.id.btnAnalyze)
         val progressBar = findViewById<ProgressBar>(R.id.progressBar)
         val tvResult = findViewById<TextView>(R.id.tvResult)
 
         btnAnalyze.setOnClickListener {
             val code = etDtcCode.text.toString()
+            val mileageStr = etMileage.text.toString()
+            val mileageInt = if (mileageStr.isNotBlank()) mileageStr.toIntOrNull() else null
+            val request = DTCRequest(dtc_code = code, mileage_km = mileageInt)
+
             if (code.isNotBlank()) {
                 progressBar.visibility = View.VISIBLE
                 tvResult.text = ""
@@ -47,7 +52,7 @@ class MainActivity : AppCompatActivity() {
                 // Запускаємо запит до сервера
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
-                        val response = NetworkClient.api.analyzeError(DTCRequest(dtc_code = code))
+                        val response = NetworkClient.api.analyzeError(request)
                         withContext(Dispatchers.Main) {
                             tvResult.text = "Рівень небезпеки: ${response.severity}\n\nРекомендація:\n${response.recommendation}"
                             progressBar.visibility = View.GONE
