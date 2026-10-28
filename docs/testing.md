@@ -25,6 +25,20 @@
 
 ---
 
+
+# Стратегія та результати тестування (Оновлення ЛР №5)
+
+## Автоматизовані Unit-тести (`ArchitectureUnitTest.kt`)
+Реалізовано 6 ізольованих модульних тестів, які перевіряють бізнес-логіку без реального backend-сервера:
+
+| № | Назва тесту | Що перевіряє | Результат |
+| :- | :--- | :--- | :--- |
+| 1 | `analyze valid code P0300 returns Critical severity from FakeRepository` | Нормалізація вводу (`p0300` -> `P0300`) та успішне отримання прогнозу через `FakeDiagnosticRepository`. | **PASSED** |
+| 2 | `analyze blank code returns EmptyCodeError` | Блокування порожнього або пробільного рядка на рівні `AnalyzeDtcUseCase`. | **PASSED** |
+| 3 | `analyze invalid format code returns InvalidCodeFormatError` | Відхилення некоректного коду (`12345`) за правилами стандарту OBD-II. | **PASSED** |
+| 4 | `analyze when network is down returns NetworkUnavailableError` | Перетворення мережевого збою на контрольований `DomainError.NetworkUnavailableError`. | **PASSED** |
+| 5 | `mapper correctly converts Domain input to DTO and Response DTO to Domain` | Коректність мапінгу всіх полів у `DiagnosticMapper`. | **PASSED** |
+| 6 | `retry after network failure succeeds when connection is restored` | Успішне виконання повторного запиту після відновлення з'єднання. | **PASSED** |
 ## 3. Перевірка правил безпеки даних (Data & AI Rules)
 - Використано синтетичні діагностичні коди (`P0300`, `P0113`, `P0420`, `P0421`) та тестові показники пробігу (`12369`, `852698`, `258965`, `25896`).
 - У локальному сховищі `DataStore` не зберігаються API-ключі, токени або технічні стек-трейси помилок.
