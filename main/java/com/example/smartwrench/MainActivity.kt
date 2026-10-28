@@ -2,16 +2,13 @@ package com.example.smartwrench
 
 import android.os.Bundle
 import android.view.View
-import android.widget.Button
-import android.widget.EditText
-import android.widget.ProgressBar
-import android.widget.TextView
+import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.text.SimpleDateFormat
@@ -32,6 +29,7 @@ object NetworkClient {
 class MainActivity : AppCompatActivity() {
 
     private lateinit var historyManager: HistoryManager
+    private lateinit var viewModel: DiagnosticViewModel
     private var currentHistoryList: List<DiagnosticRecord> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,28 +38,81 @@ class MainActivity : AppCompatActivity() {
 
         historyManager = HistoryManager(applicationContext)
 
+        // Composition Root (Dependency Injection)
+        val realRepository = RealDiagnosticRepository(NetworkClient.api)
+        val fakeRepository = FakeDiagnosticRepository()
+        val initialUseCase = AnalyzeDtcUseCase(realRepository)
+
+        val factory = DiagnosticViewModelFactory(initialUseCase) { prediction ->
+            val record = DiagnosticRecord(
+                dtcCode = prediction.dtcCode,
+                mileage = prediction.mileageKm,
+                severity = prediction.severity,
+                recommendation = prediction.recommendation,
+                status = "готово"
+            )
+            historyManager.saveRecord(record)
+        }
+        viewModel = ViewModelProvider(this, factory)[DiagnosticViewModel::class.java]
+
+        val cbFakeMode = findViewById<CheckBox>(R.id.cbFakeMode)
         val etDtcCode = findViewById<EditText>(R.id.etDtcCode)
         val etMileage = findViewById<EditText>(R.id.etMileage)
         val btnAnalyze = findViewById<Button>(R.id.btnAnalyze)
+        val btnRetry = findViewById<Button>(R.id.btnRetry)
         val btnClearHistory = findViewById<Button>(R.id.btnClearHistory)
         val progressBar = findViewById<ProgressBar>(R.id.progressBar)
         val tvResult = findViewById<TextView>(R.id.tvResult)
         val tvHistory = findViewById<TextView>(R.id.tvHistory)
 
-        val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
+        // Перемикання між Real та Fake репозиторієм через DI
+        cbFakeMode.setOnCheckedChangeListener { _, isChecked ->
+            val selectedRepo = if (isChecked) fakeRepository else realRepository
+            viewModel.updateUseCase(AnalyzeDtcUseCase(selectedRepo))
+        }
 
-        // Реактивне отримання списку історії у зворотному хронологічному порядку
+        // Спостереження за UI State (Idle, Loading, Success, Error)
+        lifecycleScope.launch {
+            viewModel.uiState.collect { state ->
+                when (state) {
+                    is DiagnosticUiState.Idle -> {
+                        progressBar.visibility = View.GONE
+                        btnAnalyze.isEnabled = true
+                        btnRetry.visibility = View.GONE
+                    }
+                    is DiagnosticUiState.Loading -> {
+                        progressBar.visibility = View.VISIBLE
+                        btnAnalyze.isEnabled = false
+                        btnRetry.visibility = View.GONE
+                        tvResult.text = ""
+                    }
+                    is DiagnosticUiState.Success -> {
+                        progressBar.visibility = View.GONE
+                        btnAnalyze.isEnabled = true
+                        btnRetry.visibility = View.GONE
+                        tvResult.text = "Рівень небезпеки: ${state.prediction.severity}\n\nРекомендація:\n${state.prediction.recommendation}"
+                    }
+                    is DiagnosticUiState.Error -> {
+                        progressBar.visibility = View.GONE
+                        btnAnalyze.isEnabled = true
+                        tvResult.text = state.message
+                        btnRetry.visibility = if (state.canRetry) View.VISIBLE else View.GONE
+                    }
+                }
+            }
+        }
+
+        // Спостереження за локальною історією (збережено сценарій ЛР 4)
+        val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
         lifecycleScope.launch {
             historyManager.historyFlow.collect { historyList ->
                 currentHistoryList = historyList
-
                 if (historyList.isEmpty()) {
                     tvHistory.text = "Історія порожня. Зробіть свій перший запит."
                     btnClearHistory.visibility = View.GONE
                 } else {
                     btnClearHistory.visibility = View.VISIBLE
                     val historyText = StringBuilder("--- Історія запитів (натисніть для деталей або видалення) ---\n\n")
-
                     for ((index, record) in historyList.withIndex()) {
                         val dateString = dateFormat.format(Date(record.createdAt))
                         historyText.append("${index + 1}. [$dateString] Статус: ${record.status}\n")
@@ -74,7 +125,14 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Відкриття списку записів для перегляду деталей або видалення конкретного запису
+        btnAnalyze.setOnClickListener {
+            viewModel.analyze(etDtcCode.text.toString(), etMileage.text.toString())
+        }
+
+        btnRetry.setOnClickListener {
+            viewModel.retryLastRequest()
+        }
+
         tvHistory.setOnClickListener {
             if (currentHistoryList.isNotEmpty()) {
                 val items = currentHistoryList.mapIndexed { index, record ->
@@ -93,7 +151,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Очищення всієї історії з підтвердженням дії
         btnClearHistory.setOnClickListener {
             AlertDialog.Builder(this)
                 .setTitle("Підтвердження очищення")
@@ -106,63 +163,8 @@ class MainActivity : AppCompatActivity() {
                 .setNegativeButton("Скасувати", null)
                 .show()
         }
-
-        btnAnalyze.setOnClickListener {
-            val code = etDtcCode.text.toString().trim()
-            val mileageStr = etMileage.text.toString().trim()
-            val mileageInt = if (mileageStr.isNotBlank()) mileageStr.toIntOrNull() else null
-            val request = DTCRequest(dtc_code = code, mileage_km = mileageInt)
-
-            if (code.isNotBlank()) {
-                progressBar.visibility = View.VISIBLE
-                tvResult.text = ""
-                btnAnalyze.isEnabled = false
-
-                lifecycleScope.launch(Dispatchers.IO) {
-                    try {
-                        val response = NetworkClient.api.analyzeError(request)
-
-                        // Валідація: перевіряємо, що відповідь не порожня
-                        if (response.severity.isNotBlank() && response.recommendation.isNotBlank()) {
-                            withContext(Dispatchers.Main) {
-                                tvResult.text = "Рівень небезпеки: ${response.severity}\n\nРекомендація:\n${response.recommendation}"
-                                progressBar.visibility = View.GONE
-                                btnAnalyze.isEnabled = true
-                            }
-
-                            // Зберігаємо тільки успішний і повний результат
-                            val record = DiagnosticRecord(
-                                dtcCode = code,
-                                mileage = mileageInt,
-                                severity = response.severity,
-                                recommendation = response.recommendation,
-                                status = "готово"
-                            )
-                            historyManager.saveRecord(record)
-                        } else {
-                            throw IllegalStateException("Отримано неповну відповідь від сервера")
-                        }
-
-                    } catch (e: Exception) {
-                        withContext(Dispatchers.Main) {
-                            val errorMessage = if (e is java.net.ConnectException || e.localizedMessage?.contains("failed to connect") == true) {
-                                "Помилка зв'язку: сервер недоступний. Перевірте, чи запущено сервер."
-                            } else {
-                                "Помилка обробки запиту. Спробуйте пізніше."
-                            }
-                            tvResult.text = errorMessage
-                            progressBar.visibility = View.GONE
-                            btnAnalyze.isEnabled = true
-                        }
-                    }
-                }
-            } else {
-                tvResult.text = "Введіть код помилки!"
-            }
-        }
     }
 
-    // Вікно деталей обраного запису з можливістю видалення
     private fun showRecordDetailsDialog(record: DiagnosticRecord, dateStr: String) {
         val detailsMessage = """
             ID запису: ${record.id}
@@ -185,7 +187,6 @@ class MainActivity : AppCompatActivity() {
             .setMessage(detailsMessage)
             .setPositiveButton("Закрити", null)
             .setNeutralButton("Видалити запис") { _, _ ->
-                // Підтвердження видалення одного запису
                 AlertDialog.Builder(this)
                     .setTitle("Підтвердження видалення")
                     .setMessage("Видалити запис для коду ${record.dtcCode}?")
