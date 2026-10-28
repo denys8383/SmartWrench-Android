@@ -1,5 +1,6 @@
 package com.example.smartwrench
 
+import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import android.widget.*
@@ -9,17 +10,28 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 object NetworkClient {
     private const val BASE_URL = "http://10.0.10.163:8000/"
+
+    // Обмежений час очікування для мережевих викликів (вимога ЛР №6)
+    private val okHttpClient = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .writeTimeout(10, TimeUnit.SECONDS)
+        .build()
+
     val api: SmartWrenchApi by lazy {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
+            .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(SmartWrenchApi::class.java)
@@ -38,17 +50,16 @@ class MainActivity : AppCompatActivity() {
 
         historyManager = HistoryManager(applicationContext)
 
-        // Composition Root (Dependency Injection)
         val realRepository = RealDiagnosticRepository(NetworkClient.api)
         val fakeRepository = FakeDiagnosticRepository()
         val initialUseCase = AnalyzeDtcUseCase(realRepository)
 
         val factory = DiagnosticViewModelFactory(initialUseCase) { prediction ->
             val record = DiagnosticRecord(
-                dtcCode = prediction.dtcCode,
+                dtcCode = "${prediction.dtcCode} (${prediction.engineType})",
                 mileage = prediction.mileageKm,
                 severity = prediction.severity,
-                recommendation = prediction.recommendation,
+                recommendation = "${prediction.recommendation}\nДозвіл на рух: ${prediction.canDrive}",
                 status = "готово"
             )
             historyManager.saveRecord(record)
@@ -58,6 +69,8 @@ class MainActivity : AppCompatActivity() {
         val cbFakeMode = findViewById<CheckBox>(R.id.cbFakeMode)
         val etDtcCode = findViewById<EditText>(R.id.etDtcCode)
         val etMileage = findViewById<EditText>(R.id.etMileage)
+        val spEngineType = findViewById<Spinner>(R.id.spEngineType)
+        val etSymptoms = findViewById<EditText>(R.id.etSymptoms)
         val btnAnalyze = findViewById<Button>(R.id.btnAnalyze)
         val btnRetry = findViewById<Button>(R.id.btnRetry)
         val btnClearHistory = findViewById<Button>(R.id.btnClearHistory)
@@ -65,13 +78,15 @@ class MainActivity : AppCompatActivity() {
         val tvResult = findViewById<TextView>(R.id.tvResult)
         val tvHistory = findViewById<TextView>(R.id.tvHistory)
 
-        // Перемикання між Real та Fake репозиторієм через DI
+        // Ініціалізація списку типів двигунів
+        val engineTypes = arrayOf("Бензин", "Дизель", "Гібрид")
+        spEngineType.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, engineTypes)
+
         cbFakeMode.setOnCheckedChangeListener { _, isChecked ->
             val selectedRepo = if (isChecked) fakeRepository else realRepository
             viewModel.updateUseCase(AnalyzeDtcUseCase(selectedRepo))
         }
 
-        // Спостереження за UI State (Idle, Loading, Success, Error)
         lifecycleScope.launch {
             viewModel.uiState.collect { state ->
                 when (state) {
@@ -90,11 +105,24 @@ class MainActivity : AppCompatActivity() {
                         progressBar.visibility = View.GONE
                         btnAnalyze.isEnabled = true
                         btnRetry.visibility = View.GONE
-                        tvResult.text = "Рівень небезпеки: ${state.prediction.severity}\n\nРекомендація:\n${state.prediction.recommendation}"
+                        tvResult.setTextColor(Color.parseColor("#B00020"))
+                        val p = state.prediction
+                        tvResult.text = "Рівень небезпеки: ${p.severity}\n" +
+                                "Тип двигуна: ${p.engineType}\n" +
+                                "Статус руху: ${p.canDrive}\n\n" +
+                                "Рекомендація AI:\n${p.recommendation}"
+                    }
+                    is DiagnosticUiState.Uncertain -> {
+                        progressBar.visibility = View.GONE
+                        btnAnalyze.isEnabled = true
+                        btnRetry.visibility = View.VISIBLE
+                        tvResult.setTextColor(Color.parseColor("#E65100"))
+                        tvResult.text = "⚠️ Невпевнений результат (Uncertain)\n\n${state.reason}"
                     }
                     is DiagnosticUiState.Error -> {
                         progressBar.visibility = View.GONE
                         btnAnalyze.isEnabled = true
+                        tvResult.setTextColor(Color.parseColor("#B00020"))
                         tvResult.text = state.message
                         btnRetry.visibility = if (state.canRetry) View.VISIBLE else View.GONE
                     }
@@ -102,7 +130,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Спостереження за локальною історією (збережено сценарій ЛР 4)
         val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
         lifecycleScope.launch {
             historyManager.historyFlow.collect { historyList ->
@@ -126,7 +153,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnAnalyze.setOnClickListener {
-            viewModel.analyze(etDtcCode.text.toString(), etMileage.text.toString())
+            viewModel.analyze(
+                rawCode = etDtcCode.text.toString(),
+                rawMileage = etMileage.text.toString(),
+                rawEngineType = spEngineType.selectedItem.toString(),
+                rawSymptoms = etSymptoms.text.toString()
+            )
         }
 
         btnRetry.setOnClickListener {
