@@ -15,3 +15,17 @@
 
 3. **Мережевий шар (Network Layer — `NetworkClient`, `SmartWrenchApi.kt`, `Models.kt`):**
    - Виконує HTTP-запити до AI-бекенду через `Retrofit2` та конвертує мережеві DTO (`DTCRequest`, `DTCResponse`).
+
+# Архітектура мобільного застосунку SmartWrench (Оновлення ЛР №5)
+
+## 1. Обраний підхід
+У межах Лабораторної роботи №5 (Варіант А) виконано декомпозицію монолітного класу `MainActivity` на тришарову архітектуру (Presentation, Domain, Data) з використанням патернів MVVM, Use Case, Repository, Mapper та Constructor Dependency Injection.
+
+## 2. Потік керування та даних
+1. **UI (`MainActivity`)** передає події користувача (`analyze`, `retryLastRequest`) у `DiagnosticViewModel`.
+2. **`DiagnosticViewModel`** переводить екран у стан `DiagnosticUiState.Loading` і викликає `AnalyzeDtcUseCase`.
+3. **`AnalyzeDtcUseCase`** нормалізує код помилки та перевіряє його за регулярним виразом `^[PCBU][0-9A-Z]{3,4}$`. У разі помилки валідації негайно повертає `Result.failure(DomainError)` без звернення до мережі.
+4. **`DiagnosticRepository` (інтерфейс)** делегує виконання одній із двох реалізацій:
+   - `RealDiagnosticRepository`: використовує `DiagnosticMapper` для створення `DTCRequest`, викликає `SmartWrenchApi` (Retrofit) та мапить `DTCResponse` у доменну модель `DiagnosticPrediction`.
+   - `FakeDiagnosticRepository`: повертає детермінований результат у пам'яті для модульного тестування та офлайн-демонстрації.
+5. У разі успіху результат зберігається у локальне сховище `HistoryManager` (`DataStore`) і публікується у `StateFlow<DiagnosticUiState.Success>`.
