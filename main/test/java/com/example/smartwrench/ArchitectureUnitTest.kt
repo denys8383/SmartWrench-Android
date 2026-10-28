@@ -95,4 +95,42 @@ class ArchitectureUnitTest {
         assertTrue(retryAttempt.isSuccess)
         assertEquals("P0113", retryAttempt.getOrNull()?.dtcCode)
     }
+
+    // Тест 7 (ЛР №6): Контекстна адаптація рекомендації для Дизельного двигуна
+    @Test
+    fun `analyze P0300 for Diesel engine adapts recommendation to injectors instead of spark plugs`() = runBlocking {
+        val fakeRepo = FakeDiagnosticRepository()
+        val useCase = AnalyzeDtcUseCase(fakeRepo)
+
+        val result = useCase(rawCode = "P0300", rawMileage = "150000", rawEngineType = "Дизель")
+
+        assertTrue(result.isSuccess)
+        val prediction = result.getOrNull()!!
+        assertTrue(prediction.recommendation.contains("форсунки"))
+        assertFalse(prediction.recommendation.contains("свічок запалювання"))
+    }
+
+    // Тест 8 (ЛР №6): Невідомий код без симптомів переводить результат у стан Uncertain
+    @Test
+    fun `analyze rare code P023 without symptoms returns isUncertain true`() = runBlocking {
+        val fakeRepo = FakeDiagnosticRepository()
+        val useCase = AnalyzeDtcUseCase(fakeRepo)
+
+        val result = useCase(rawCode = "P023", rawMileage = "43234", rawEngineType = "Бензин", rawSymptoms = "")
+
+        assertTrue(result.isSuccess)
+        assertTrue(result.getOrNull()!!.isUncertain)
+    }
+
+    // Тест 9 (ЛР №6): Перевірка відсікання нереалістичного пробігу (> 2 000 000 км)
+    @Test
+    fun `analyze with out of bounds mileage returns InvalidMileageRangeError`() = runBlocking {
+        val fakeRepo = FakeDiagnosticRepository()
+        val useCase = AnalyzeDtcUseCase(fakeRepo)
+
+        val result = useCase(rawCode = "P0171", rawMileage = "9999999")
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is DomainError.InvalidMileageRangeError)
+    }
 }
