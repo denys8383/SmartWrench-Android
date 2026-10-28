@@ -17,15 +17,14 @@
             android:textSize="22sp"
             android:textStyle="bold"
             android:layout_gravity="center_horizontal"
-            android:layout_marginBottom="16dp"/>
+            android:layout_marginBottom="12dp"/>
 
-        <!-- Debug-перемикач між Real та Fake репозиторієм -->
         <CheckBox
             android:id="@+id/cbFakeMode"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Використовувати Fake Repository (без сервера)"
-            android:layout_marginBottom="16dp"/>
+            android:layout_marginBottom="12dp"/>
 
         <EditText
             android:id="@+id/etDtcCode"
@@ -33,14 +32,37 @@
             android:layout_height="wrap_content"
             android:hint="Введіть код (напр. P0300)"
             android:inputType="textCapCharacters"
-            android:layout_marginBottom="16dp"/>
+            android:layout_marginBottom="12dp"/>
 
         <EditText
             android:id="@+id/etMileage"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Пробіг (км, необов'язково)"
+            android:hint="Пробіг (км, 0 - 2 000 000)"
             android:inputType="number"
+            android:layout_marginBottom="12dp"/>
+
+        <!-- Нова ознака 1: Вибір типу двигуна -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Тип двигуна:"
+            android:textStyle="bold"/>
+
+        <Spinner
+            android:id="@+id/spEngineType"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginBottom="12dp"/>
+
+        <!-- Нова ознака 2: Додатковий контекст (симптоми авто) -->
+        <EditText
+            android:id="@+id/etSymptoms"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Симптоми (напр. троїть, дим, глохне — необов'язково)"
+            android:inputType="textMultiLine"
+            android:maxLines="3"
             android:layout_marginBottom="16dp"/>
 
         <Button
@@ -50,7 +72,6 @@
             android:text="Запитати в AI-механіка"
             android:layout_marginBottom="8dp"/>
 
-        <!-- Кнопка контрольного розширення: Повтор останнього невдалого запиту -->
         <Button
             android:id="@+id/btnRetry"
             android:layout_width="match_parent"
