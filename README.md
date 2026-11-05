@@ -143,7 +143,7 @@ private const val BASE_URL = "http://10.0.10.163:8000/"
 ./gradlew testDebugUnitTest
 
 
-# SmartWrench AI Діагностика — Мобільний AI-застосунок (`lab7-final`)
+  # SmartWrench AI Діагностика — Мобільний AI-застосунок (`lab7-final`)
 
 Android-застосунок для інтелектуальної діагностики автомобілів за кодами несправностей OBD-II (DTC). Поєднує тришарову клієнтську архітектуру (`MVVM + UseCase + Repository`), постійне локальне сховище (`Jetpack DataStore`) та контекстний AI-аналіз на базі локального `FastAPI` сервера з урахуванням типу двигуна, пробігу й симптомів авто.
 
