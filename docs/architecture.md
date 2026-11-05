@@ -34,43 +34,41 @@
 
 ## 1. Схема компонентів та потоку даних
 
-1. Схема компонентів та потоку даних
+```mermaid
+flowchart TD
+    User(["Користувач (Водій)<br/>Вводить: dtcCode, mileage, engineType, symptoms"])
+    
+    subgraph Presentation ["1. PRESENTATION LAYER (MainActivity.kt, PresentationLayer.kt)"]
+        VM["DiagnosticViewModel<br/>StateFlow: Idle | Loading | Success | Uncertain | Error"]
+    end
 
-[ Користувач (Водій) ] 
-       │ 
-       ▼ Вводить дані: dtcCode, mileage, engineType, symptoms
-       
-+-------------------------------------------------------------+
-| 1. PRESENTATION LAYER (MainActivity.kt, PresentationLayer.kt)|
-|  - ViewModel керує станом (Idle / Loading / Success / Error)  |
-+-------------------------------------------------------------+
-       │ 
-       ▼ Викликає аналіз у UseCase
-       
-+-------------------------------------------------------------+
-| 2. DOMAIN LAYER (DomainLayer.kt)                            |
-|  - Preprocessor (перевірка формату, пробігу та симптомів)   |
-|  - AnalyzeDtcUseCase (бізнес-логіка)                        |
-+-------------------------------------------------------------+
-       │ 
-       ▼ Передає запит через інтерфейс DiagnosticRepository
-       
-       ├──> [ 3A. REAL SOURCE ] ──> Retrofit ──> [ FastAPI Backend ]
-       │      (RealRepo)          (OkHttp 10s)     (POST /analyze)
-       │
-       └──> [ 3B. FAKE SOURCE ] ──────────────> [ Локальна імітація ]
-              (FakeRepo)                        (без сервера)
-       │
-       ▼ Отримує результат (DTCResponse)
-       
-+-------------------------------------------------------------+
-| 4. POST-PROCESSING & PERSISTENCE (DataLayer.kt)             |
-|  - Postprocessor (перевірка Uncertain, адаптація під двигун) |
-|  - HistoryManager (Jetpack DataStore + Gson локальна історія)|
-+-------------------------------------------------------------+
-       │
-       ▼
-[ Відображення результату та збереження в історію ]
+    subgraph Domain ["2. DOMAIN LAYER (DomainLayer.kt)"]
+        Prep["DiagnosticPreprocessor<br/>(Regex OBD-II, межі пробігу 0..2M км, критичні симптоми)"]
+        UC["AnalyzeDtcUseCase"]
+        RepoInt{{"<<interface>><br/>DiagnosticRepository"}}
+    end
+
+    subgraph Data ["3. DATA LAYER (DataLayer.kt)"]
+        RealRepo["RealDiagnosticRepository<br/>(Retrofit + OkHttp 10s)"]
+        FakeRepo["FakeDiagnosticRepository<br/>(Локальна імітація без сервера)"]
+        Post["DiagnosticPostprocessor<br/>(Перевірка Uncertain, адаптація під двигун, canDrive)"]
+        Hist["HistoryManager<br/>(Jetpack DataStore + Gson)"]
+    end
+
+    Backend[("FastAPI Backend Server<br/>POST /analyze")]
+
+    User --> VM
+    VM --> UC
+    UC --> Prep
+    Prep --> RepoInt
+    RepoInt -->|Основний режим| RealRepo
+    RepoInt -->|Автономний режим| FakeRepo
+    RealRepo <-->|HTTP JSON| Backend
+    RealRepo --> Post
+    FakeRepo --> Post
+    Post --> Hist
+    Post --> VM
+```
 ## 2. Місце виконання AI та основні архітектурні рішення
 1. **Гібридний розподіл AI-логіки:** Генерація експертних рекомендацій виконується на локальному FastAPI backend-сервері, тоді як валідація ознак (`DiagnosticPreprocessor`) та контроль безпеки висновків і стану `Uncertain` (`DiagnosticPostprocessor`) реалізовані на клієнті.
 2. **Ізоляція зовнішніх залежностей (DI):** `DiagnosticViewModel` не залежить від `Retrofit` чи `Context` і отримує `AnalyzeDtcUseCase` через `DiagnosticViewModelFactory`.
