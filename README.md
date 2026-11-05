@@ -141,3 +141,27 @@ private const val BASE_URL = "http://10.0.10.163:8000/"
 Проєкт містить 9 модульних тестів у `ArchitectureUnitTest.kt`, які перевіряють препроцесор даних, межі пробігу, мапінг, адаптацію під дизельний двигун, стан `Uncertain` та повтор запиту:
 ```bash
 ./gradlew testDebugUnitTest
+
+
+# SmartWrench AI Діагностика — Мобільний AI-застосунок (`lab7-final`)
+
+Android-застосунок для інтелектуальної діагностики автомобілів за кодами несправностей OBD-II (DTC). Поєднує тришарову клієнтську архітектуру (`MVVM + UseCase + Repository`), постійне локальне сховище (`Jetpack DataStore`) та контекстний AI-аналіз на базі локального `FastAPI` сервера з урахуванням типу двигуна, пробігу й симптомів авто.
+
+---
+
+## 1. Вимоги до середовища
+- **ОС розробки:** Windows 10/11, macOS або Linux.
+- **Android Studio:** Ladybug / Koala (2024.1+) або новіша.
+- **Платформа та компілятор:** JDK 11 (`jvmTarget = "11"`), Kotlin `2.1.0`, Android Gradle Plugin `8.4.0`, `compileSdk = 34`, `minSdk = 26` (Android 8.0+).
+- **Пристрій для тестування:** Фізичний Android-смартфон або емулятор Android (API 34+).
+- **Backend-середовище:** Python 3.10+, `FastAPI`, `Uvicorn`, `Pydantic`.
+
+---
+
+## 2. Встановлення APK (`app-debug.apk`)
+Інсталяційний файл відповідає Git-тегу **`lab7-final`** (навчальна debug-збірка `app-debug.apk`).
+
+1. Візьміть готовий файл `app/build/outputs/apk/debug/app-debug.apk` (або завантажте його з розділу Releases репозиторію).
+2. Встановіть APK на підключений смартфон або емулятор через ADB:
+   ```bash
+   adb install -r app/build/outputs/apk/debug/app-debug.apk
