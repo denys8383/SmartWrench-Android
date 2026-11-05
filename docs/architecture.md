@@ -34,58 +34,43 @@
 
 ## 1. Схема компонентів та потоку даних
 
-[ Користувач (Водій) ]
-       │ Вводить: dtcCode, mileage, engineType, symptoms
-       ▼
-+-------------------------------------------------------------------------+
-| 1. PRESENTATION LAYER (`MainActivity.kt`, `PresentationLayer.kt`)       |
-|  - MainActivity: відображає UI, блокує кнопку при Loading, керує діалогами|
-|  - DiagnosticViewModel: зберігає StateFlow<DiagnosticUiState>           |
-|    (Idle | Loading | Success | Uncertain | Error) та параметри для Retry|
-+-------------------------------------------------------------------------+
-       │ Виклик analyze(rawCode, rawMileage, rawEngineType, rawSymptoms)
-       ▼
-+-------------------------------------------------------------------------+
-| 2. DOMAIN LAYER (`DomainLayer.kt`)                                      |
-|  - DiagnosticPreprocessor (Підготовка даних):                           |
-|    * Нормалізація та Regex-перевірка коду OBD-II (`^[PCBU][0-9A-Z]{3,4}$`)|
-|    * Перевірка меж пробігу (`0..2 000 000 км`) та довжини симптомів (<=300)|
-|    * Виділення маркерів критичних симптомів (`hasCriticalSymptoms`)     |
-|  - AnalyzeDtcUseCase: координує препроцесинг та виклик репозиторію      |
-|  - DiagnosticRepository (Інтерфейс / Контракт)                          |
-+-------------------------------------------------------------------------+
-       │ Result<DiagnosticInput>
-       ├──────────────────────────────────────┐
-       ▼ (Основний режим)                     ▼ (Автономний / Тестовий режим)
-+-----------------------------------+  +----------------------------------+
-| 3A. REAL DATA SOURCE              |  | 3B. FAKE DATA SOURCE             |
-| (`RealDiagnosticRepository`)      |  | (`FakeDiagnosticRepository`)     |
-|  - DiagnosticMapper (Domain->DTO) |  |  - Детермінована імітація відповідей|
-|  - OkHttpClient (Timeout = 10s)   |  |    та мережевих збоїв у пам'яті  |
-|  - SmartWrenchApi (Retrofit POST) |  +----------------------------------+
-+-----------------------------------+                 │
-       │ HTTP JSON (`DTCRequest`)                     │
-       ▼                                              │
-+-----------------------------------+                 │
-| 4. BACKEND AI SERVICE (FastAPI)   |                 │
-|  - Ендпоінт: `POST /analyze`      |                 │
-|  - Формування контекстного запиту |                 │
-|    до AI-моделі (ключі у `.env`)  |                 │
-+-----------------------------------+                 │
-       │ HTTP JSON (`DTCResponse`)                    │
-       └──────────────────┬───────────────────────────┘
-                          ▼
-+-------------------------------------------------------------------------+
-| 5. POST-PROCESSING & LOCAL PERSISTENCE (`DataLayer.kt`, `HistoryManager`)|
-|  - DiagnosticPostprocessor:                                             |
-|    * Виявлення невпевненого результату (`isUncertain -> Uncertain state`)|
-|    * Адаптація рекомендацій під тип двигуна (`Бензин` / `Дизель` / `Гібрид`)|
-|    * Класифікація безпеки руху (`canDrive`)                             |
-|  - HistoryManager (`Jetpack DataStore` + `Gson`):                       |
-|    * Зберігає тільки валідні результати зі статусом `"готово"`          |
-|    * Реактивно оновлює список історії через `historyFlow`               |
-+-------------------------------------------------------------------------+
+1. Схема компонентів та потоку даних
 
+[ Користувач (Водій) ] 
+       │ 
+       ▼ Вводить дані: dtcCode, mileage, engineType, symptoms
+       
++-------------------------------------------------------------+
+| 1. PRESENTATION LAYER (MainActivity.kt, PresentationLayer.kt)|
+|  - ViewModel керує станом (Idle / Loading / Success / Error)  |
++-------------------------------------------------------------+
+       │ 
+       ▼ Викликає аналіз у UseCase
+       
++-------------------------------------------------------------+
+| 2. DOMAIN LAYER (DomainLayer.kt)                            |
+|  - Preprocessor (перевірка формату, пробігу та симптомів)   |
+|  - AnalyzeDtcUseCase (бізнес-логіка)                        |
++-------------------------------------------------------------+
+       │ 
+       ▼ Передає запит через інтерфейс DiagnosticRepository
+       
+       ├──> [ 3A. REAL SOURCE ] ──> Retrofit ──> [ FastAPI Backend ]
+       │      (RealRepo)          (OkHttp 10s)     (POST /analyze)
+       │
+       └──> [ 3B. FAKE SOURCE ] ──────────────> [ Локальна імітація ]
+              (FakeRepo)                        (без сервера)
+       │
+       ▼ Отримує результат (DTCResponse)
+       
++-------------------------------------------------------------+
+| 4. POST-PROCESSING & PERSISTENCE (DataLayer.kt)             |
+|  - Postprocessor (перевірка Uncertain, адаптація під двигун) |
+|  - HistoryManager (Jetpack DataStore + Gson локальна історія)|
++-------------------------------------------------------------+
+       │
+       ▼
+[ Відображення результату та збереження в історію ]
 ## 2. Місце виконання AI та основні архітектурні рішення
 1. **Гібридний розподіл AI-логіки:** Генерація експертних рекомендацій виконується на локальному FastAPI backend-сервері, тоді як валідація ознак (`DiagnosticPreprocessor`) та контроль безпеки висновків і стану `Uncertain` (`DiagnosticPostprocessor`) реалізовані на клієнті.
 2. **Ізоляція зовнішніх залежностей (DI):** `DiagnosticViewModel` не залежить від `Retrofit` чи `Context` і отримує `AnalyzeDtcUseCase` через `DiagnosticViewModelFactory`.
